@@ -1,0 +1,12 @@
+* text=auto
+*.cs text eol=lf
+*.csproj text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.props text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.tle text eol=lf
+# 외부 기준 파일은 바이트 그대로 둔다 (줄 끝 변환 금지)
+tests/GroundStationRx.Tests/golden/SGP4-VER.TLE -text
+tests/GroundStationRx.Tests/golden/tcppver.out -text

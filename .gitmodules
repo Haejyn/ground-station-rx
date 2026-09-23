@@ -1,0 +1,6 @@
+[submodule "external/spacelink"]
+	path = external/spacelink
+	url = https://github.com/Haejyn/ccsds-downlink-reliability.git
+[submodule "external/orbit-pass-sim"]
+	path = external/orbit-pass-sim
+	url = https://github.com/Haejyn/orbit-pass-sim.git

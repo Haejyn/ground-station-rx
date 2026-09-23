@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>GroundStationRx</RootNamespace>
+    <Description>위성 지상국 수신 처리 — 원시 IQ 녹음에서 궤도 기반 도플러 보정 · 복조 · 비터비 · CCSDS 프레임까지</Description>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="GroundStationRx.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\external\spacelink\src\SpaceLink\SpaceLink.csproj" />
+    <ProjectReference Include="..\..\external\orbit-pass-sim\csharp\OrbitSim\OrbitSim.csproj" />
+  </ItemGroup>
+</Project>

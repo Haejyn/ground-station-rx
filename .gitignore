@@ -1,0 +1,12 @@
+bin/
+obj/
+build/
+TestResults/
+StrykerOutput/
+*.user
+.vs/
+.idea/
+BenchmarkDotNet.Artifacts/
+__pycache__/
+*.pyc
+recordings/
