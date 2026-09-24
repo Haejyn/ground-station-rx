@@ -4,9 +4,9 @@
 원시 IQ 녹음 → 궤도 기반 도플러 → 복조 → 비터비 → CCSDS 프레임 → 스페이스 패킷
 
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![tests](https://img.shields.io/badge/tests-52%20passed-16a34a)
+![tests](https://img.shields.io/badge/tests-80%20passed-16a34a)
 ![coverage](https://img.shields.io/badge/line%20coverage-97.1%25-16a34a)
-![requirements](https://img.shields.io/badge/requirements-15%2F15-2563eb)
+![requirements](https://img.shields.io/badge/requirements-16%2F16-2563eb)
 ![gr-satellites](https://img.shields.io/badge/gr--satellites-115%2F115%20byte%20match-2563eb)
 
 ## 요약
@@ -114,9 +114,9 @@ flowchart LR
 
 | 항목 | 값 |
 |---|---|
-| 시험 | 52 통과 · 빌드 경고 0 |
+| 시험 | 80 통과 · 빌드 경고 0 (녹음 시험 8 개는 녹음이 있을 때만, 없으면 건너뛰고 추적표에서 미검증) |
 | 커버리지 | 라인 97.1 % · 분기 91.2 % |
-| 요구사항 추적 | 15/15 |
+| 요구사항 추적 | 16/16 |
 | 녹음 처리 시간 | 짧은 녹음 68 초 → 약 3 초 · 패스 560 초 → 약 20 초 |
 | 복원 | 버스트 19 · 프레임 119 · 스페이스 패킷 (짧은 녹음) 12 개, 순서 카운트 빈틈없음 |
 | 도플러 적합 | 370 구간 · 고정 오차 224.5 Hz · Δt −53 ± 7 ms · 잔차 RMS 5.12 → 4.73 Hz |
@@ -150,7 +150,7 @@ dotnet run -c Release --project tools/PassReport && python tools/make_readme_fig
 | `src/GroundStationRx/Receiver/` | 수신 체인 · 관성 블록 정책 · 짧은 TM · KISS |
 | `src/GroundStationRx/Recording/` | SigMF (ci16 · cf32 · cu8) |
 | `external/` | SpaceLink v1.1 · orbit-pass-sim v1.0 (서브모듈) |
-| `tests/` | xUnit 52 개 · 기준 자료 `golden/` ([출처](tests/GroundStationRx.Tests/golden/README.md)) |
+| `tests/` | xUnit 80 개 · 기준 자료 `golden/` ([출처](tests/GroundStationRx.Tests/golden/README.md)) |
 | `tools/` | 녹음 받기 · 기준 생성기 (Skyfield · reedsolo · gr-satellites) · 추적 · 보고 · 그림 |
 | `docs/` | [요구사항](docs/requirements.md) · [추적 매트릭스](docs/traceability.md) |
 
