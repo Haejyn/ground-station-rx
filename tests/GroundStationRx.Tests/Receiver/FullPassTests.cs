@@ -62,9 +62,35 @@ public class FullPassTests(ITestOutputHelper output)
             return (t, truth + (rng.NextDouble() - 0.5) * 10); // ±5 Hz 균일 잡음(발진기 가열 흐름 정도)
         }).ToList();
         var fit = DopplerResidualFit.Fit(pts, link, NominalHz);
-        output.WriteLine($"c {fit.FrequencyOffsetHz:F2} Hz · Δt {fit.TimeOffsetSeconds * 1000:F1} ms · RMS {fit.RmsBeforeHz:F1} → {fit.RmsAfterHz:F2} Hz");
+        output.WriteLine($"c {fit.FrequencyOffsetHz:F2} Hz · Δt {fit.TimeOffsetSeconds * 1000:F1} ± {fit.TimeOffsetStdErrSeconds * 1000:F1} ms · RMS {fit.RmsBeforeHz:F1} → {fit.RmsAfterHz:F2} Hz");
         Assert.InRange(fit.FrequencyOffsetHz, 220.0, 222.0);
         Assert.InRange(fit.TimeOffsetSeconds, 0.21, 0.25);
+        Assert.Equal(500, fit.Points);
+
+        // 통계량을 함수 밖에서 다시 계산해 대조한다 — 균일 잡음 ±5 Hz 의 표준편차는 10/√12 = 2.89 Hz
+        Assert.InRange(fit.RmsAfterHz, 2.6, 3.2);
+        var d = pts.Select(p => link.At(p.t.AddSeconds(0.5)).DopplerHz(NominalHz) - link.At(p.t.AddSeconds(-0.5)).DopplerHz(NominalHz)).ToArray();
+        var r = pts.Select(p => p.Item2 - NominalHz - link.At(p.t).DopplerHz(NominalHz)).ToArray();
+        double rm = r.Average();
+        Assert.Equal(Math.Sqrt(r.Sum(x => (x - rm) * (x - rm)) / r.Length), fit.RmsBeforeHz, 6); // 뺄셈 순서가 달라 1e-7 Hz 반올림 차이
+        double dm = d.Average();
+        double expectedStdErr = fit.RmsAfterHz * Math.Sqrt(500.0 / 498) / Math.Sqrt(d.Sum(x => (x - dm) * (x - dm)));
+        Assert.Equal(expectedStdErr, fit.TimeOffsetStdErrSeconds, 6);
+    }
+
+    [Fact]
+    [Trait("Requirement", "REQ-ORB-05")]
+    public void DopplerFit_NeedsThreePointsAndVaryingDopplerRate()
+    {
+        var link = Link();
+        var t0 = new DateTime(2024, 12, 9, 8, 0, 0, DateTimeKind.Utc);
+        (DateTime, double) P(int k) => (t0.AddSeconds(60 * k), NominalHz + link.At(t0.AddSeconds(60 * k)).DopplerHz(NominalHz) + 100);
+        var three = DopplerResidualFit.Fit([P(0), P(1), P(2)], link, NominalHz);
+        Assert.Equal(100.0, three.FrequencyOffsetHz, 6);
+        Assert.Throws<ArgumentException>(() => DopplerResidualFit.Fit([P(0), P(1)], link, NominalHz));
+        Assert.Throws<ArgumentException>(() => DopplerResidualFit.Fit([P(0), P(0), P(0)], link, NominalHz)); // 변화율이 한결같다
+        Assert.Throws<ArgumentNullException>(() => DopplerResidualFit.Fit(null!, link, NominalHz));
+        Assert.Throws<ArgumentNullException>(() => DopplerResidualFit.Fit([P(0), P(1), P(2)], null!, NominalHz));
     }
 
     /// <summary>

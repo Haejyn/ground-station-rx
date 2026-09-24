@@ -100,4 +100,53 @@ public class TleTests
         other += Tle.Checksum(other).ToString(System.Globalization.CultureInfo.InvariantCulture);
         Assert.Throws<FormatException>(() => Tle.Parse(Asrtu1Line1, other));
     }
+
+    [Fact]
+    [Trait("Requirement", "REQ-ORB-02")]
+    public void LinesWithoutChecksumColumn_AreAccepted()
+    {
+        // 체크섬 열(69)을 빼고 68 자로 주는 출처도 있다 — 그래도 읽는다
+        var tle = Tle.Parse(Asrtu1Line1[..68], Asrtu1Line2[..68]);
+        Assert.Equal(15.23747191, tle.MeanMotionRevPerDay, 12);
+        Assert.Throws<FormatException>(() => Tle.Parse(Asrtu1Line1[..67], Asrtu1Line2));
+        Assert.Throws<FormatException>(() => Tle.Parse(Asrtu1Line1, Asrtu1Line2[..67]));
+        Assert.Throws<ArgumentNullException>(() => Tle.Parse(null!, Asrtu1Line2));
+        Assert.Throws<ArgumentNullException>(() => Tle.Parse(Asrtu1Line1, null!));
+    }
+
+    [Theory]
+    [Trait("Requirement", "REQ-ORB-02")]
+    [InlineData("9 ", true)]
+    [InlineData("1 ", false)]
+    public void WrongLineNumber_IsRejectedEvenWithValidChecksum(string prefix, bool line1)
+    {
+        string l = prefix + (line1 ? Asrtu1Line1 : Asrtu1Line2)[2..68];
+        l += Tle.Checksum(l).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Throws<FormatException>(() => line1 ? Tle.Parse(l, Asrtu1Line2) : Tle.Parse(Asrtu1Line1, l));
+    }
+
+    /// <summary>두 자리 연도는 57 을 기준으로 가른다(첫 인공위성 1957) — 57 → 1957, 56 → 2056.</summary>
+    [Theory]
+    [Trait("Requirement", "REQ-ORB-02")]
+    [InlineData("57", 1957)]
+    [InlineData("99", 1999)]
+    [InlineData("00", 2000)]
+    [InlineData("56", 2056)]
+    public void TwoDigitYear_PivotsAt57(string yy, int year)
+    {
+        string l = Asrtu1Line1[..18] + yy + Asrtu1Line1[20..68];
+        l += Tle.Checksum(l).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var tle = Tle.Parse(l, Asrtu1Line2);
+        Assert.Equal(year, tle.EpochYear);
+        Assert.Equal(year, tle.EpochUtc.Year);
+    }
+
+    [Fact]
+    [Trait("Requirement", "REQ-ORB-02")]
+    public void ImpliedDecimalWithoutExponent_IsReadAsIs()
+    {
+        string l = Asrtu1Line1[..53] + " 12345  " + Asrtu1Line1[61..68];
+        l += Tle.Checksum(l).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(0.12345, Tle.Parse(l, Asrtu1Line2).Bstar, 15);
+    }
 }

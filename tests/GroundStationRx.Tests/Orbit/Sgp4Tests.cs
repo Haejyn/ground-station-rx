@@ -117,4 +117,19 @@ public class Sgp4Tests(ITestOutputHelper output)
         var ex = Assert.ThrowsAny<Sgp4Exception>(() => sgp4.Propagate(365 * 1440.0));
         Assert.Equal(Sgp4Error.Decayed, ex.Error); // Vallado 판(python-sgp4)도 같은 시점에 오류 6
     }
+
+    [Fact]
+    [Trait("Requirement", "REQ-ORB-01")]
+    public void EccentricityDrivenOutOfRange_ThrowsError1()
+    {
+        // B* 5.0 — 항력이 비현실적으로 커서 평균 이심률이 음수로 떨어진다. python-sgp4(Vallado 판)도 2 일 뒤 오류 1
+        var tle = Tle.Parse(
+            "1 61781U 24199AY  24343.80030339  .00013950  00000+0  50000+1 0  9992",
+            "2 61781  97.3798 208.0613 0018899 119.8177 240.4942 15.23747191 49005");
+        var sgp4 = new Sgp4(tle);
+        sgp4.Propagate(1440.0); // 하루 뒤는 아직 된다
+        var ex = Assert.Throws<Sgp4Exception>(() => sgp4.Propagate(2 * 1440.0));
+        Assert.Equal(Sgp4Error.MeanEccentricityOutOfRange, ex.Error);
+        Assert.Throws<ArgumentNullException>(() => new Sgp4(null!));
+    }
 }

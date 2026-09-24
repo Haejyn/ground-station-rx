@@ -11,8 +11,9 @@ public readonly record struct CarrierMeasurement(DateTime Utc, double OffsetHz, 
 /// 그 선을 FFT 로 찾아 반으로 나눈다. 복조기를 믿지 않고 반송파만 재는 독립 측정이라, 궤도 예측 도플러를 판정하는 데 쓴다.
 ///
 /// 찾을 곳을 알면(예측 도플러) 그 주변 ±<c>searchHalfWidthHz</c> 만 본다 — 실제 녹음에는 다른 송신원도 있어서
-/// 전 대역에서 가장 센 선을 고르면 엉뚱한 신호를 잰다(ASRTU-1 녹음의 −90 kHz 신호). 창 밖을 버리려고
-/// 먼저 기대 주파수로 내려 옮기고 이동 평균으로 솎아 낸 뒤 제곱한다 — FFT 가 작아져 빨라지는 것은 덤이다.
+/// 전 대역에서 가장 센 선을 고르면 엉뚱한 신호를 잰다(ASRTU-1 녹음의 −90 kHz 신호). 창 밖을 버리는 일은 둘로 나뉜다:
+/// 기대 주파수로 내려 옮긴 뒤 이동 평균 3 단(CIC)으로 걸러 솎으면 **먼** 신호가 사라지고, 솎은 대역 안의 **가까운** 신호는
+/// 제곱 스펙트럼에서 창 안만 보는 것으로 버린다. FFT 가 작아져 빨라지는 것은 덤이다.
 ///
 /// 한계: 제곱하면 주파수가 두 배라 잴 수 있는 범위가 (솎아 낸) 표본율의 ±1/4 로 줄어든다.
 /// 선의 위치는 Hann 창 스펙트럼의 로그 크기에 포물선을 맞춰 빈 사이 값까지 구한다.
@@ -27,22 +28,25 @@ public static class BpskCarrierEstimator
         int decimation = expectedOffsetHz is null ? 1 : Math.Max(1, (int)(sampleRateHz / (8 * searchHalfWidthHz)));
         double rate = sampleRateHz / decimation;
 
-        // 기대 주파수를 0 Hz 로 옮기고, decimation 개씩 평균 내 솎는다
-        int n = block.Length / decimation;
-        var x = new Complex[n];
+        // 기대 주파수를 0 Hz 로 옮긴다
+        var y = new Complex[block.Length];
         var rot = Complex.FromPolarCoordinates(1, -2 * Math.PI * center / sampleRateHz);
         var w = Complex.One;
-        for (int i = 0, k = 0; i < n; i++)
+        for (int k = 0; k < block.Length; k++)
         {
-            var acc = Complex.Zero;
-            for (int j = 0; j < decimation; j++, k++)
-            {
-                acc += block[k] * w;
-                w *= rot;
-            }
-            x[i] = acc / decimation;
-            if ((i & 1023) == 0) w /= w.Magnitude; // 누적 반올림으로 크기가 흐르지 않게
+            y[k] = block[k] * w;
+            w *= rot;
+            if ((k & 1023) == 0) w /= w.Magnitude; // 누적 반올림으로 크기가 흐르지 않게
         }
+
+        // 이동 평균 3 단(CIC 3 차) 뒤 decimation 개마다 하나 — 한 단만 쓰면 솎을 때 접혀 들어오는 먼 신호를 26 dB 밖에 못 줄여,
+        // 창 밖의 센 방해 신호가 창 안으로 새어 들어왔다(SearchWindow_…Aliased… 시험). 3 단이면 같은 자리에서 약 78 dB
+        if (decimation > 1)
+            for (int stage = 0; stage < 3; stage++) y = MovingAverage(y, decimation);
+        int settle = decimation > 1 ? 3 * (decimation - 1) : 0;
+        int n = (block.Length - settle) / decimation;
+        var x = new Complex[n];
+        for (int i = 0; i < n; i++) x[i] = y[settle + i * decimation];
 
         int fftSize = 1;
         while (fftSize < n * 4) fftSize <<= 1; // 4 배 영 채움 — 포물선 보간의 치우침을 줄인다
@@ -78,6 +82,19 @@ public static class BpskCarrierEstimator
         Array.Sort(sorted);
         double snrDb = 10 * Math.Log10(power[peak] / sorted[fftSize / 2]);
         return new CarrierMeasurement(utc, center + bin * rate / fftSize / 2.0, snrDb);
+    }
+
+    private static Complex[] MovingAverage(Complex[] v, int length)
+    {
+        var o = new Complex[v.Length];
+        var acc = Complex.Zero;
+        for (int i = 0; i < v.Length; i++)
+        {
+            acc += v[i];
+            if (i >= length) acc -= v[i - length];
+            o[i] = acc / length;
+        }
+        return o;
     }
 
     /// <summary>

@@ -108,6 +108,18 @@ public class DemodulatorTests(ITestOutputHelper output)
         for (int i = 1; i < r.Length; i++) Assert.True(Math.Abs(r[i] - r[i - 1]) < 0.3);
     }
 
+    /// <summary>합성 신호의 펄스 — t=0 의 값은 닫힌 식 1 − α + 4α/π, 에너지는 심볼 시간 기준 1 (수치 적분).</summary>
+    [Fact]
+    [Trait("Requirement", "REQ-DEM-01")]
+    public void RrcPulse_PeakAndUnitEnergy()
+    {
+        Assert.Equal(1 - 0.35 + 4 * 0.35 / Math.PI, BpskSignalGenerator.Rrc(0.0, 0.35), 12);
+        double e = 0;
+        for (double t = -40; t <= 40; t += 0.001) e += Math.Pow(BpskSignalGenerator.Rrc(t, 0.35), 2) * 0.001;
+        Assert.Equal(1.0, e, 3);
+        Assert.True(double.IsFinite(BpskSignalGenerator.Rrc(1 / (4 * 0.35), 0.35))); // 1/(4α) 특이점
+    }
+
     internal static double TheoryBer(double ebN0Db) => 0.5 * Erfc(Math.Sqrt(Math.Pow(10, ebN0Db / 10)));
 
     /// <summary>상보 오차 함수 — Numerical Recipes erfcc(체비셰프 근사, 상대 오차 1.2e-7).</summary>

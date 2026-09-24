@@ -74,4 +74,48 @@ public class LinkGeometryTests(ITestOutputHelper output)
         int closest = samples.IndexOf(samples.MinBy(s => s.RangeKm));
         Assert.True(samples[closest - 1].RangeRateKmS < 0 && samples[closest + 1].RangeRateKmS > 0);
     }
+
+    [Fact]
+    [Trait("Requirement", "REQ-ORB-03")]
+    public void Gmst_IsInZeroToTwoPi_BeforeAndAfterJ2000()
+    {
+        foreach (var t in new[] { new DateTime(1992, 8, 20, 12, 14, 0, DateTimeKind.Utc), new DateTime(2024, 12, 9, 8, 0, 0, DateTimeKind.Utc) })
+        {
+            double g = EarthFrames.Gmst(EarthFrames.JulianDate(t));
+            Assert.InRange(g, 0.0, 2 * Math.PI - 1e-12);
+        }
+    }
+
+    /// <summary>WGS-84 측지 → 지구 고정 좌표를 Skyfield(wgs84.latlon().itrs_xyz)와 1 mm 로 대조 — 고도 10 m 도 가려낸다.</summary>
+    [Theory]
+    [Trait("Requirement", "REQ-ORB-03")]
+    [InlineData(0.0, 0.0, 1.0, 6379.137000000, 0.0, 0.0)]
+    [InlineData(90.0, 0.0, 1.0, 0.0, 0.0, 6357.752314245)]
+    [InlineData(45.0, 90.0, 0.0, 0.0, 4517.590878849, 4487.348408866)]
+    [InlineData(52.812, 6.396, 0.010, 3839.326926243, 430.378109663, 5057.933215887)]
+    public void GroundSiteEcef_MatchesSkyfield(double lat, double lon, double altKm, double x, double y, double z)
+    {
+        var e = new GroundSite("t", lat, lon, altKm).Ecef;
+        Assert.True((e - new Vec3(x, y, z)).Norm < 1e-6, $"{e}");
+    }
+
+    [Fact]
+    [Trait("Requirement", "REQ-ORB-03")]
+    public void CrossProduct_AllComponents()
+    {
+        var a = new Vec3(1.5, -2.0, 3.0);
+        var b = new Vec3(-4.0, 0.5, 2.5);
+        Assert.Equal(new Vec3(-2.0 * 2.5 - 3.0 * 0.5, 3.0 * -4.0 - 1.5 * 2.5, 1.5 * 0.5 - -2.0 * -4.0), a.Cross(b));
+        Assert.Equal(0.0, a.Cross(b).Dot(a), 12);
+        Assert.Equal(new Vec3(-2.5, -1.5, 5.5), Vec3.Add(a, b) - Vec3.Multiply(0, a) + Vec3.Subtract(a, a) - new Vec3(0, 0, 0));
+    }
+
+    [Fact]
+    [Trait("Requirement", "REQ-ORB-03")]
+    public void LinkGeometry_RejectsMissingInputs()
+    {
+        var sgp4 = new Sgp4(Tle.Parse(TleTests.Asrtu1Line1, TleTests.Asrtu1Line2));
+        Assert.Throws<ArgumentNullException>(() => new LinkGeometry(null!, Dwingeloo));
+        Assert.Throws<ArgumentNullException>(() => new LinkGeometry(sgp4, null!));
+    }
 }
