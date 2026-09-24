@@ -104,7 +104,18 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
         var baseband = FirFilter.FilterDecimate(x, FirFilter.LowPass(fs, 14_000, 301), decimation);
         var (s0, s1) = BurstEdges(baseband, rate / config.SymbolRateHz);
         var burst = baseband.AsSpan(s0, s1 - s0);
-        var demod = BpskBurstDemodulator.Demodulate(burst, rate, config.SymbolRateHz, config.RollOff);
+        DemodulatedBurst demod;
+        try
+        {
+            demod = BpskBurstDemodulator.Demodulate(burst, rate, config.SymbolRateHz, config.RollOff);
+        }
+        catch (ArgumentException)
+        {
+            // 복조할 수 없는 버스트(너무 짧음 · 신호 없음)는 실패로 기록하고 다음 버스트로 — 수신기 전체를 멈추지 않는다
+            return ([], new BurstReport(index, rec.TimeOf(start + (long)s0 * decimation), rec.TimeOf(start + (long)s1 * decimation),
+                group.Select(m => m.OffsetHz).Order().ElementAt(group.Count / 2), double.NaN, double.NaN, 0, 0, 0, 0,
+                [[], []], [0, 0], [0, 0], [[], []], []));
+        }
 
         var frames = new List<ReceivedFrame>();
         var seen = new HashSet<string>();

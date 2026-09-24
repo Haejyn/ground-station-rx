@@ -4,8 +4,9 @@
 원시 IQ 녹음 → 궤도 기반 도플러 → 복조 → 비터비 → CCSDS 프레임 → 스페이스 패킷
 
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white)
-![tests](https://img.shields.io/badge/tests-80%20passed-16a34a)
-![coverage](https://img.shields.io/badge/line%20coverage-97.1%25-16a34a)
+![tests](https://img.shields.io/badge/tests-84%20passed-16a34a)
+![coverage](https://img.shields.io/badge/line%20coverage-98.6%25-16a34a)
+![mutation](https://img.shields.io/badge/mutation-95.53%25-16a34a)
 ![requirements](https://img.shields.io/badge/requirements-16%2F16-2563eb)
 ![gr-satellites](https://img.shields.io/badge/gr--satellites-115%2F115%20byte%20match-2563eb)
 
@@ -95,6 +96,11 @@ flowchart LR
 | 송신기 +224 Hz · 켜질 때 12 Hz 흐름 | 반송파 잔차 | 예측 도플러 ±5 kHz 창 |
 | 녹음의 다른 송신원 (−90 kHz) | 전 대역 탐색에서 엉뚱한 선 | 창 안 탐색 |
 | 녹음에 신호 없는 버스트 1 개 | 프레임 카운트 빈 곳 · 반송파 선 11 dB | 수신기 결함 아님으로 판정 |
+| 약한 버스트를 통째로 놓침 (Es/N0 6 dB 이하) | 합성 송신기 끝에서 끝까지 시험 | 검출 문턱 30 → 18 dB (잡음 실측 11~12.6 dB) |
+| 버스트가 구간을 거의 채우면 예외 | 합성 시험 | 잡음 바닥 추정 수정 |
+| 센 먼 방해 신호가 측정 창으로 샘 | 뮤테이션 판정 (영점에 놓인 시험 신호) | 이동 평균 3 단 (CIC) |
+| 신호 없는 구간 → 무한 반복 · 메모리 부족 | 뮤테이션 판정 중 추가한 시험 | 입력 거부 · 버스트 단위 실패 기록 |
+| 잃은 프레임 뒤 조각이 정상 패킷 모양 | 뮤테이션 판정 (길이 검사로는 못 가려냄) | 가상 채널 카운트 빈틈 → 조각 폐기 (시험 고정) |
 
 <details>
 <summary><b>❌ 틀렸던 가설 · 측정</b></summary>
@@ -114,8 +120,9 @@ flowchart LR
 
 | 항목 | 값 |
 |---|---|
-| 시험 | 80 통과 · 빌드 경고 0 (녹음 시험 8 개는 녹음이 있을 때만, 없으면 건너뛰고 추적표에서 미검증) |
-| 커버리지 | 라인 97.1 % · 분기 91.2 % |
+| 시험 | 84 통과 · 빌드 경고 0 (녹음 시험 8 개는 녹음이 있을 때만, 없으면 건너뛰고 추적표에서 미검증) |
+| 뮤테이션 | 95.53 % (Stryker.NET, 단위 시험만) · 1 차 71.35 % → 판정 · 보강 → 2 차 · 생존 41 개 판정 (문자열 13 · 동등 4 · 이후 시험 추가 · SGP4 미도달 분기 기록) |
+| 커버리지 | 라인 98.6 % · 분기 96.7 % (녹음 시험 포함) |
 | 요구사항 추적 | 16/16 |
 | 녹음 처리 시간 | 짧은 녹음 68 초 → 약 3 초 · 패스 560 초 → 약 20 초 |
 | 복원 | 버스트 19 · 프레임 119 · 스페이스 패킷 (짧은 녹음) 12 개, 순서 카운트 빈틈없음 |
@@ -150,8 +157,9 @@ dotnet run -c Release --project tools/PassReport && python tools/make_readme_fig
 | `src/GroundStationRx/Receiver/` | 수신 체인 · 관성 블록 정책 · 짧은 TM · KISS |
 | `src/GroundStationRx/Recording/` | SigMF (ci16 · cf32 · cu8) |
 | `external/` | SpaceLink v1.1 · orbit-pass-sim v1.0 (서브모듈) |
-| `tests/` | xUnit 80 개 · 기준 자료 `golden/` ([출처](tests/GroundStationRx.Tests/golden/README.md)) |
+| `tests/` | xUnit 84 개 · 기준 자료 `golden/` ([출처](tests/GroundStationRx.Tests/golden/README.md)) |
 | `tools/` | 녹음 받기 · 기준 생성기 (Skyfield · reedsolo · gr-satellites) · 추적 · 보고 · 그림 |
+| `src/GroundStationRx/Simulation/` | 합성 BPSK · 합성 송신기 (수신 체인의 거울, 녹음 없는 끝에서 끝까지 시험) |
 | `docs/` | [요구사항](docs/requirements.md) · [추적 매트릭스](docs/traceability.md) |
 
 </details>
@@ -163,6 +171,8 @@ dotnet run -c Release --project tools/PassReport && python tools/make_readme_fig
 - SGP4 근지구만 (심우주 거부)
 - 텔레메트리 필드 해석 없음 (스페이스 패킷까지)
 - 녹음 시각 출처가 장비 내부 시계 (`vrt:time_source internal`)
+- 가까운 인접 채널 신호는 반송파 측정 창으로 못 막음 (2f ± 심볼율 곁선)
+- 뮤테이션 시험 한 번에 약 4 시간 40 분 (시간 초과 변이 451 개) — 마지막 보강 뒤로는 다시 재지 않음
 
 ## 관련 프로젝트
 

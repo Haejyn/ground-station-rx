@@ -131,4 +131,39 @@ public class DemodulatorTests(ITestOutputHelper output)
                    + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
         return x >= 0 ? r : 2 - r;
     }
+
+    /// <summary>
+    /// RRC 식은 t = ±1/(4α) 에서 0/0 이라 따로 적은 극한값을 쓴다. 그 값이 틀려도 "유한하다" 는 통과했다(뮤테이션 시험이 지적) —
+    /// 이웃 점과 이어지는지로 판정한다. 합성 신호 발생기와 정합 필터 두 곳 모두.
+    /// </summary>
+    [Theory]
+    [Trait("Requirement", "REQ-DEM-01")]
+    [InlineData(0.35)]
+    [InlineData(0.5)]
+    public void RrcSingularPoint_IsContinuousWithNeighbours(double a)
+    {
+        double t0 = 1 / (4 * a);
+        double left = BpskSignalGenerator.Rrc(t0 - 1e-6, a), right = BpskSignalGenerator.Rrc(t0 + 1e-6, a);
+        Assert.Equal(0.5 * (left + right), BpskSignalGenerator.Rrc(t0, a), 5);
+
+        // 정합 필터: 심볼당 표본 수를 t0 가 정확히 표본에 걸리게 고른다(sps = 4 → t = 1/(4·0.5) = 0.5 = 표본 2 개)
+        double sps = 1 / t0;
+        var h = FirFilter.RootRaisedCosine(sps, a, 8);
+        int m = h.Length / 2;
+        var dense = FirFilter.RootRaisedCosine(sps * 1000, a, 8); // 같은 펄스를 1000 배 촘촘히
+        int md = dense.Length / 2;
+        double scale = h[m] / dense[md];
+        Assert.Equal(0.5 * (dense[md + 999] + dense[md + 1001]) * scale, h[m + 1], 4);
+    }
+
+    [Fact]
+    [Trait("Requirement", "REQ-DEM-01")]
+    public void FilterDesign_AndDemodulator_RejectBadInputs()
+    {
+        Assert.Throws<ArgumentException>(() => FirFilter.LowPass(40_000, 5_000, 100)); // 짝수 탭 — 지연이 정수가 아니다
+        Assert.Equal(1.0, FirFilter.LowPass(40_000, 5_000, 101).Sum(), 12);           // DC 이득 1
+        Assert.Throws<ArgumentException>(() => BpskBurstDemodulator.Demodulate(new System.Numerics.Complex[500], 40_000, 9600)); // 타이밍 창보다 짧다
+        // 길이는 충분한데 신호가 없다(전부 0 — 녹음이 끊긴 구간). 처음에는 심볼율이 NaN 이 되어 무한 반복 끝에 메모리가 바닥났다
+        Assert.Throws<ArgumentException>(() => BpskBurstDemodulator.Demodulate(new System.Numerics.Complex[40_000], 40_000, 9600));
+    }
 }

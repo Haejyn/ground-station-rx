@@ -107,7 +107,8 @@ public class LinkGeometryTests(ITestOutputHelper output)
         var b = new Vec3(-4.0, 0.5, 2.5);
         Assert.Equal(new Vec3(-2.0 * 2.5 - 3.0 * 0.5, 3.0 * -4.0 - 1.5 * 2.5, 1.5 * 0.5 - -2.0 * -4.0), a.Cross(b));
         Assert.Equal(0.0, a.Cross(b).Dot(a), 12);
-        Assert.Equal(new Vec3(-2.5, -1.5, 5.5), Vec3.Add(a, b) - Vec3.Multiply(0, a) + Vec3.Subtract(a, a) - new Vec3(0, 0, 0));
+        Assert.Equal(new Vec3(-2.5, -1.5, 5.5), Vec3.Add(a, b) + Vec3.Subtract(a, a));
+        Assert.Equal(new Vec3(3.0, -4.0, 6.0), Vec3.Multiply(2, a));
     }
 
     [Fact]

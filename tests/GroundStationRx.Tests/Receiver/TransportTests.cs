@@ -99,4 +99,32 @@ public class TransportTests
         Assert.All(got, g => Assert.Contains(sent, s => s.AsSpan().SequenceEqual(g)));
         Assert.DoesNotContain(got, g => g.AsSpan().SequenceEqual(sent[0]));
     }
+
+    /// <summary>
+    /// 잃은 프레임 바로 뒤 조각이 **우연히 올바른 패킷 모양**이어도 내보내지 않는다 — 큰 패킷 P 안에 정상 모양의 작은 패킷 Q 를 숨겨,
+    /// P 의 앞부분이 든 프레임을 잃으면 뒤 프레임은 Q 로 시작해 FEND 로 끝난다. 길이 검사로는 못 가려낸다(Q 는 길이가 맞다).
+    /// 가상 채널 카운트의 빈틈을 보고 "앞부분 없는 조각" 이라고 표시하는 것만이 막는다 — 표시를 끄면 위조 패킷 Q 가 조용히 나간다.
+    /// </summary>
+    [Fact]
+    [Trait("Requirement", "REQ-RX-02")]
+    public void FragmentAfterLostFrame_IsNotEmittedEvenIfItLooksLikeAPacket()
+    {
+        const int body = CcsdsBurstTransmitter.FrameLength - ShortTmHeader.Length; // 218
+        // 순서 플래그 "분할 없음"(11)은 헤더 셋째 바이트를 0xC0(=FEND)로 만들어 KISS 이스케이프로 길이가 바뀐다 — 위치를 맞추려고 "첫 조각"(01)
+        var r = new SpacePacket(10, 1, Enumerable.Repeat((byte)0x22, 94).ToArray(), SequenceFlags.First).Encode();   // 100 바이트
+        var q = new SpacePacket(99, 7, Enumerable.Repeat((byte)0x11, 44).ToArray(), SequenceFlags.First).Encode();   // 50 바이트, 숨길 패킷
+        // 흐름: FEND R FEND P ... — Q 가 셋째 프레임 본문의 첫 바이트(2·218)에서 시작해 P 의 끝과 같이 끝나게 P 를 짠다
+        int pStart = 1 + r.Length + 1;
+        int filler = 2 * body - pStart - SpacePacket.PrimaryHeaderLength;
+        var pData = Enumerable.Repeat((byte)0x33, filler).Concat(q).ToArray();
+        var p = new SpacePacket(20, 2, pData, SequenceFlags.First).Encode();
+        var frames = CcsdsBurstTransmitter.ShortTmKissFrames(50, 2, [r, p], 0, 0);
+        Assert.True(frames[2].AsSpan(ShortTmHeader.Length, q.Length).SequenceEqual(q)); // 셋째 프레임이 Q 로 시작한다
+
+        var t = new ShortTmKissTransport(50, [2]);
+        var got = frames.Where((_, i) => i != 1).SelectMany(f => t.Process(f)).Select(x => x.Raw).ToList();
+        Assert.Equal(r, Assert.Single(got));                  // R 만 나오고
+        Assert.DoesNotContain(got, g => g.AsSpan().SequenceEqual(q)); // 숨긴 Q 는 나오지 않는다
+        Assert.Equal(1, t.PacketsDropped);
+    }
 }

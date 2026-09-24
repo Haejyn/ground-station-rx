@@ -28,6 +28,8 @@ public static class BpskBurstDemodulator
         double rollOff = 0.35, int timingWindowSymbols = 256, int phaseWindowSymbols = 32)
     {
         double nominalSps = sampleRateHz / nominalSymbolRateHz;
+        if (baseband.Length < timingWindowSymbols * nominalSps)
+            throw new ArgumentException($"버스트({baseband.Length} 표본)가 타이밍 창({timingWindowSymbols} 심볼)보다 짧다", nameof(baseband));
         var mf = FirFilter.RootRaisedCosine(nominalSps, rollOff, 10);
         var y = FirFilter.FilterDecimate(baseband, mf, 1);
         int n = y.Length;
@@ -36,6 +38,9 @@ public static class BpskBurstDemodulator
         for (int i = 0; i < n; i++) power[i] = y[i].Real * y[i].Real + y[i].Imaginary * y[i].Imaginary;
 
         double rate = MeasureSymbolRate(power, sampleRateHz, nominalSymbolRateHz);
+        // 신호가 없으면(전부 0 등) 선이 없어 NaN 이 된다 — 그대로 두면 창 길이가 음수가 되어 창을 끝없이 만들다 메모리가 바닥난다(시험이 잡은 결함)
+        if (!double.IsFinite(rate) || Math.Abs(rate / nominalSymbolRateHz - 1) > 0.02)
+            throw new ArgumentException($"심볼율 선을 찾지 못했다(측정 {rate} Hz) — 신호가 없는 구간", nameof(baseband));
         double sps = sampleRateHz / rate;
 
         // Oerder & Meyr: 창 가운데 표본 위치 → 타이밍 위상(주기 단위)
