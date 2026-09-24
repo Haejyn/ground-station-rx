@@ -9,6 +9,8 @@ namespace GroundStationRx.Tests.Recording;
 internal static class RealRecording
 {
     public const string Asrtu1Short = "asrtu_2024_12_09_07_57_51_435.300MHz_1.00Msps_ci16_le";
+    /// <summary>짧은 녹음 바로 뒤(07:59:02)부터 패스 끝까지 560 초 — 도플러 +10 → −10 kHz.</summary>
+    public const string Asrtu1FullPass = "asrtu_2024_12_09_07_59_02_435.300MHz_1.00Msps_ci16_le.chan0";
 
     public static string Directory
     {

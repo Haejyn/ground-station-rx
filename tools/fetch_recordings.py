@@ -23,11 +23,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "https://data.camras.nl/satellites/raw/"
 SHORT = "asrtu_2024_12_09_07_57_51_435.300MHz_1.00Msps_ci16_le"
+FULL = "asrtu_2024_12_09_07_59_02_435.300MHz_1.00Msps_ci16_le.chan0"  # 짧은 녹음 바로 뒤부터 패스 끝까지 560 초
 
 # (파일 이름, 크기, sha256) — 내용이 바뀌면 시험 결과가 달라지므로 고정한다
 RECORDINGS = [
     (f"{SHORT}.sigmf-meta", 569, "956e47f6e77059cf45456c988b125236318fe0c8edb80301604eaec714ac8033"),
     (f"{SHORT}.sigmf-data", 270_880_000, "e138f8decedf56e2d8b5a323fe02380ecc9fe2c92cae2bf084c76aecbf3a3b7b"),
+    (f"{FULL}.sigmf-meta", 569, "9ca8d3e31dc54b3fa12fab6c85ae505780552791870d30c57ec6efbce33357b7"),
+    (f"{FULL}.sigmf-data", 2_240_560_000, "ff82571979aa420a636337f91637cb52b9e7c22a0fe421369c2f9e34c8a8a4ee"),
 ]
 
 
