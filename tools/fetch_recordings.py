@@ -22,6 +22,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BASE = "https://data.camras.nl/satellites/raw/"
+SATNOGS_BASE = "https://data.camras.nl/satnogs/"
 SHORT = "asrtu_2024_12_09_07_57_51_435.300MHz_1.00Msps_ci16_le"
 FULL = "asrtu_2024_12_09_07_59_02_435.300MHz_1.00Msps_ci16_le.chan0"  # 짧은 녹음 바로 뒤부터 패스 끝까지 560 초
 
@@ -31,7 +32,10 @@ RECORDINGS = [
     (f"{SHORT}.sigmf-data", 270_880_000, "e138f8decedf56e2d8b5a323fe02380ecc9fe2c92cae2bf084c76aecbf3a3b7b"),
     (f"{FULL}.sigmf-meta", 569, "9ca8d3e31dc54b3fa12fab6c85ae505780552791870d30c57ec6efbce33357b7"),
     (f"{FULL}.sigmf-data", 2_240_560_000, "ff82571979aa420a636337f91637cb52b9e7c22a0fe421369c2f9e34c8a8a4ee"),
+    # 같은 패스의 SatNOGS IQ 덤프(관측 10736393, int16 · 76.8 ksps · SatNOGS 가 도플러 보정) — 원래 이름은 iq_10736393.raw
+    ("satnogs_iq_10736393.raw", 200_646_932, "623858c5674b01558c7e350231f70bb086db9f100a70e23657761bbe3d397533"),
 ]
+SOURCE_NAME = {"satnogs_iq_10736393.raw": SATNOGS_BASE + "iq_10736393.raw"}
 
 
 def sha256(path: Path) -> str:
@@ -85,10 +89,11 @@ def main() -> int:
         if not args.check and not (path.exists() and path.stat().st_size == size):
             print(f"downloading {name} ({size / 1e6:.1f} MB)", flush=True)
             t0 = time.time()
+            url = SOURCE_NAME.get(name, BASE + name)
             if size < 1_000_000:
-                urllib.request.urlretrieve(BASE + name, path)
+                urllib.request.urlretrieve(url, path)
             else:
-                download(BASE + name, path, size, args.parts)
+                download(url, path, size, args.parts)
             print(f"  {time.time() - t0:.0f} s", flush=True)
         ok = path.exists() and sha256(path) == digest
         print(f"{'ok ' if ok else 'BAD'} {name}")

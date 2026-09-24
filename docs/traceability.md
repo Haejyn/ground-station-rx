@@ -18,5 +18,6 @@
 | REQ-RX-03 | 독립 구현과 같은 프레임을 낸다 | `ReceiverTests#Asrtu1Recording_FramesMatchGrSatellitesByteForByte` | 1/1 | ✅ 통과 |
 | REQ-RX-04 | 패스 전체(도플러 ±10 kHz)에서 녹음에 신호가 있는 프레임을 전부 복원한다 | `FullPassTests#FullPass_EveryFramePresentInTheSignalIsRecovered` | 1/1 | ✅ 통과 |
 | REQ-ORB-05 | 도플러 잔차를 고정 주파수 오차 + 시각 어긋남으로 풀고, 예측 도플러가 패스 전체에서 송신기 흐름 수준으로 맞는다 | `FullPassTests#DopplerFit_RecoversInjectedTimeAndFrequencyOffsets`<br>`FullPassTests#FullPass_PredictedDopplerMatchesWithinTransmitterDrift` | 2/2 | ✅ 통과 |
+| REQ-RX-05 | 독립 복호기가 낸 프레임을 전부, 같은 바이트로 낸다 | `FullPassTests#FullPass_EveryFrameFromIndependentDecodersIsReproduced` | 1/1 | ✅ 통과 |
 
-**요구사항 14개 중 14개 검증됨.**
+**요구사항 15개 중 15개 검증됨.**

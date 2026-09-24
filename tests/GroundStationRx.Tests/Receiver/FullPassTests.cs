@@ -96,4 +96,40 @@ public class FullPassTests(ITestOutputHelper output)
         Assert.InRange(fit.FrequencyOffsetHz, 215.0, 235.0); // 짧은 녹음에서 잰 221 Hz 와 같은 송신기
         Assert.InRange(Math.Abs(fit.TimeOffsetSeconds), 0.0, 0.2);
     }
+
+    /// <summary>
+    /// 독립 복호 결과 둘과 대조한다 — 둘 다 gr-satellites, 입력만 다르다.
+    ///  (1) 원시 IQ 를 **도플러 보정 없이**(FLL 이 따라감) 복호한 것 (2) SatNOGS 가 자기 궤도 예측으로 도플러를 보정해 기록한 IQ 를 복호한 것.
+    /// (2) 는 이 저장소의 궤도·도플러 코드를 한 줄도 거치지 않는다. 두 기준이 낸 프레임은 **전부** 이 수신기 결과에 같은 바이트로 있어야 한다.
+    /// </summary>
+    [RecordingFact(RealRecording.Asrtu1FullPass)]
+    [Trait("Requirement", "REQ-RX-05")]
+    public void FullPass_EveryFrameFromIndependentDecodersIsReproduced()
+    {
+        var link = Link();
+        var ours = new List<byte[]>();
+        foreach (string name in new[] { RealRecording.Asrtu1Short, RealRecording.Asrtu1FullPass })
+            ours.AddRange(new BpskCcsdsReceiver(ReceiverTests.Asrtu1, link).Process(RealRecording.Open(name)).Frames.Select(f => f.Bytes));
+        var ourSet = ours.Select(Convert.ToHexString).ToHashSet();
+
+        foreach (var (file, label) in new[]
+        {
+            ("asrtu1_grsatellites_frames.bin", "gr-satellites · 짧은 녹음"),
+            ("asrtu1_fullpass_grsatellites_frames.bin", "gr-satellites · 전체 패스(도플러 보정 없음)"),
+            ("asrtu1_satnogs_iq_grsatellites_frames.bin", "gr-satellites · SatNOGS IQ(SatNOGS 도플러 보정, 포화)"),
+        })
+        {
+            var theirs = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "golden", file)).Chunk(223)
+                .Select(Convert.ToHexString).ToHashSet();
+            var missing = theirs.Where(h => !ourSet.Contains(h)).ToList();
+            output.WriteLine($"{label}: {theirs.Count} 장(중복 제거) · 이 수신기에 없는 것 {missing.Count}");
+            foreach (var m in missing)
+                output.WriteLine($"   없음: MC {m[4..6]} {m[..24]}");
+            Assert.Empty(missing);
+        }
+        var reference = new[] { "asrtu1_grsatellites_frames.bin", "asrtu1_fullpass_grsatellites_frames.bin", "asrtu1_satnogs_iq_grsatellites_frames.bin" }
+            .SelectMany(f => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "golden", f)).Chunk(223).Select(Convert.ToHexString)).ToHashSet();
+        var onlyOurs = ourSet.Where(h => !reference.Contains(h)).Select(h => h[4..6]).Order().ToList();
+        output.WriteLine($"이 수신기 {ourSet.Count} 장 · 기준 합집합 {reference.Count} 장 · 이 수신기만 받은 것 {onlyOurs.Count} (MC {string.Join(" ", onlyOurs)})");
+    }
 }
