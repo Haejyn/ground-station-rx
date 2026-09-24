@@ -1,6 +1,7 @@
 using GroundStationRx.Coding;
 using GroundStationRx.Simulation;
 using GroundStationRx.Tests.Dsp;
+using SpaceLink.ChannelCoding;
 using Xunit.Abstractions;
 
 namespace GroundStationRx.Tests.Coding;
@@ -113,5 +114,36 @@ public class CodingTests(ITestOutputHelper output)
         }
         output.WriteLine($"오류 17 개 200 회: 실패 선언 {failures}, 다른 부호어로 오정정 {200 - failures}");
         Assert.True(failures >= 190);
+    }
+
+    /// <summary>
+    /// 실제 녹음에서 찾은 함정 — PN 수열로 만든 채움 신호는 **RS 부호어**다. PN 은 GF(256) 스펙트럼이 8 점에만 있고
+    /// 그 점들이 RS 근(β^112…β^143) 을 모두 피하므로, 거꾸로 읽은 PN 을 어느 위치에서 잘라 PN 을 벗겨도 신드롬이 0 이다.
+    /// 255 가지 순환 이동 전부를 확인한다 — 우연이 아니라 구조라는 증거. 무작위 블록은 대조군으로 실패해야 한다.
+    /// 그래서 수신기는 RS 통과만으로 프레임을 믿지 않는다(REQ-RX-01 의 관성 블록 정책).
+    /// </summary>
+    [Fact]
+    [Trait("Requirement", "REQ-FEC-02")]
+    public void PnFill_IsAValidReedSolomonCodeword()
+    {
+        var pn = Pseudorandomizer.Sequence(255, PseudorandomSequence.Legacy255);
+        var rs = new ConventionalReedSolomon();
+        var data = new byte[223];
+        for (int shift = 0; shift < 255; shift++)
+        {
+            var block = new byte[255];
+            for (int j = 0; j < 255; j++) block[j] = (byte)(pn[((shift - j) % 255 + 255) % 255] ^ pn[j]); // 받은 채움 − PN
+            var r = rs.Decode(block, data);
+            Assert.True(r.Succeeded && r.CorrectedSymbols == 0, $"이동 {shift}");
+        }
+        var rng = new Random(9);
+        int randomPass = 0;
+        for (int t = 0; t < 100; t++)
+        {
+            var block = new byte[255];
+            rng.NextBytes(block);
+            if (rs.Decode(block, data).Succeeded) randomPass++;
+        }
+        Assert.Equal(0, randomPass);
     }
 }

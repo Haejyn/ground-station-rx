@@ -26,8 +26,13 @@ public sealed record BpskCcsdsConfig
 public sealed record ReceivedFrame(DateTime Utc, int Burst, int Alignment, byte[] Bytes, int CorrectedSymbols, TransferFrame? Tm, FrameError TmError);
 
 /// <summary>버스트 하나의 수신 기록 — 어디서 무엇을 쟀고 몇 장을 살렸는지(실패도 남긴다).</summary>
+/// <param name="MarkerBits">정렬별로 ASM(비트 오류 3 개 이하)이 보인 비트 위치 — 코드블록 경계가 어디서 왔는지 보려고 남긴다</param>
+/// <param name="FlywheelBlocks">정렬별로 동기기가 마커 없이 관성(flywheel)으로 낸 코드블록 수</param>
+/// <param name="FlywheelDropped">그중 뒤 마커로 경계가 확인되지 않아 버린 수</param>
+/// <param name="BoundaryWords">정렬별로 첫 마커부터 코드블록 길이 간격의 자리에 실제로 있던 32 비트 — 마커가 깨진 자리를 들여다보려고</param>
 public sealed record BurstReport(int Index, DateTime StartUtc, DateTime EndUtc, double CarrierOffsetHz, double SymbolRateHz,
-    double DemodQuality, int Symbols, int Codeblocks, int RsFailures, int Frames);
+    double DemodQuality, int Symbols, int Codeblocks, int RsFailures, int Frames, int[][] MarkerBits, int[] FlywheelBlocks,
+    int[] FlywheelDropped, uint[][] BoundaryWords);
 
 public sealed record ReceptionResult(IReadOnlyList<ReceivedFrame> Frames, IReadOnlyList<BurstReport> Bursts);
 
@@ -98,11 +103,16 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
         var seen = new HashSet<string>();
         int codeblocks = 0, rsFailures = 0;
         var rs = new ConventionalReedSolomon();
+        var markerBits = new int[2][];
+        var flywheel = new int[2];
+        var flywheelDropped = new int[2];
+        var boundary = new uint[2][];
         for (int align = 0; align < 2; align++)
         {
             var bits = Nrzm.Decode(ConvolutionalCode.Decode(demod.Soft.AsSpan(align)));
-            var sync = new FrameSynchronizer(ConventionalReedSolomon.CodeblockLength);
-            foreach (var cb in sync.Process(PackBits(bits)))
+            markerBits[align] = FindMarkers(bits, 3);
+            boundary[align] = BoundaryWords(bits, markerBits[align]);
+            foreach (var cb in ConfirmedCodeblocks(PackBits(bits), out flywheel[align], out flywheelDropped[align]))
             {
                 codeblocks++;
                 Pseudorandomizer.Apply(cb, PseudorandomSequence.Legacy255);
@@ -118,8 +128,54 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
 
         var report = new BurstReport(index, rec.TimeOf(start + (long)s0 * decimation), rec.TimeOf(start + (long)s1 * decimation),
             group.Select(m => m.OffsetHz).Order().ElementAt(group.Count / 2), demod.SymbolRateHz, demod.Quality,
-            demod.Soft.Length, codeblocks, rsFailures, frames.Count);
+            demod.Soft.Length, codeblocks, rsFailures, frames.Count, markerBits, flywheel, flywheelDropped, boundary);
         return (frames, report);
+    }
+
+    /// <summary>
+    /// SpaceLink 동기기의 코드블록 중, 마커 없이 관성(flywheel)으로 낸 블록은 **뒤에 마커가 다시 나와 같은 격자가 확인될 때만** 받는다.
+    ///
+    /// 왜: ASRTU-1 은 마지막 프레임 뒤에 PN 을 거꾸로 읽은 채움 신호를 보낸다. 잠긴 동기기는 마커가 없어도 한 블록을 더 읽는데,
+    /// PN 류 수열은 GF(256) 스펙트럼이 8 점에만 있고 그 점들이 RS 의 근을 모두 피해 가서 **RS 가 오류 0 으로 통과한다**
+    /// (<c>CodingTests.PnFill_IsAValidReedSolomonCodeword</c>). RS 통과만으로는 진짜 프레임과 구별할 수 없다.
+    /// 버스트 한가운데서 잡음으로 마커 하나가 깨진 경우는 뒤 마커가 경계를 확인해 주므로 그대로 살아난다.
+    /// </summary>
+    internal static List<byte[]> ConfirmedCodeblocks(ReadOnlySpan<byte> stream, out int flywheelBlocks, out int flywheelDropped)
+    {
+        var sync = new FrameSynchronizer(ConventionalReedSolomon.CodeblockLength);
+        var confirmed = new List<byte[]>();
+        var pending = new List<byte[]>();
+        flywheelBlocks = 0;
+        flywheelDropped = 0;
+        long missed = 0, resyncs = 0;
+        for (int i = 0; i < stream.Length; i++)
+        {
+            // 한 바이트씩 넣으면 한 번에 많아야 한 블록이 나와서, 그 블록이 관성 블록인지 MarkersMissed 로 가릴 수 있다
+            var blocks = sync.Process(stream.Slice(i, 1));
+            if (sync.Resyncs != resyncs)
+            {
+                flywheelDropped += pending.Count; // 격자를 잃었다 — 관성 블록의 경계는 끝내 확인되지 않는다
+                pending.Clear();
+                resyncs = sync.Resyncs;
+            }
+            foreach (var b in blocks)
+            {
+                if (sync.MarkersMissed != missed)
+                {
+                    missed = sync.MarkersMissed;
+                    flywheelBlocks++;
+                    pending.Add(b);
+                }
+                else
+                {
+                    confirmed.AddRange(pending);
+                    pending.Clear();
+                    confirmed.Add(b);
+                }
+            }
+        }
+        flywheelDropped += pending.Count;
+        return confirmed;
     }
 
     /// <summary>
@@ -155,6 +211,37 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
         int s = Math.Max(0, bestStart - w / 2);
         int e = Math.Min(y.Length, bestStart + bestLen - w / 2);
         return (s, e);
+    }
+
+    /// <summary>ASM 0x1ACFFC1D 와 해밍 거리 <paramref name="maxErrors"/> 이하인 비트 위치(겹치지 않게).</summary>
+    internal static int[] FindMarkers(ReadOnlySpan<byte> bits, int maxErrors)
+    {
+        const uint asm = FrameSynchronizer.AttachedSyncMarker;
+        var hits = new List<int>();
+        uint window = 0;
+        for (int i = 0; i < bits.Length; i++)
+        {
+            window = window << 1 | bits[i];
+            if (i < 31) continue;
+            int start = i - 31;
+            if (System.Numerics.BitOperations.PopCount(window ^ asm) <= maxErrors && (hits.Count == 0 || start - hits[^1] >= 32))
+                hits.Add(start);
+        }
+        return [.. hits];
+    }
+
+    private static uint[] BoundaryWords(ReadOnlySpan<byte> bits, int[] markers)
+    {
+        if (markers.Length == 0) return [];
+        const int caduBits = (4 + ConventionalReedSolomon.CodeblockLength) * 8;
+        var words = new List<uint>();
+        for (int pos = markers[0]; pos + 32 <= bits.Length; pos += caduBits)
+        {
+            uint w = 0;
+            for (int i = 0; i < 32; i++) w = w << 1 | bits[pos + i];
+            words.Add(w);
+        }
+        return [.. words];
     }
 
     private static long SampleAt(SigmfRecording rec, DateTime utc) => (long)Math.Round((utc - rec.StartUtc).TotalSeconds * rec.SampleRateHz);

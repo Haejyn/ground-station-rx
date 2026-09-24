@@ -12,7 +12,9 @@
 | REQ-REC-01 | SigMF 녹음(ci16_le · cf32_le · cu8)의 메타데이터와 표본을 읽는다 | `SigmfRecordingTests#Ci16Le_MetadataAndSamples`<br>`SigmfRecordingTests#Cf32LeAndCu8_AreDecoded`<br>`SigmfRecordingTests#UnsupportedOrAmbiguousRecordings_AreRejected`<br>`SigmfRecordingTests#RealAsrtu1Recording_Metadata` | 4/4 | ✅ 통과 |
 | REQ-DEM-01 | BPSK 버스트를 연판정 심볼로 복조한다 — 심볼율 오차·소수 타이밍·잔여 반송파를 버스트 안에서 스스로 추정한다 | `DemodulatorTests#Noiseless_AllSymbolsRecovered_UnderTimingRateAndCarrierErrors`<br>`DemodulatorTests#BitErrorRate_WithinHalfDecibelOfTheory`<br>`DemodulatorTests#Unwrap_KeepsPhaseContinuousAcrossTheCut` | 5/5 | ✅ 통과 |
 | REQ-FEC-01 | CCSDS 길쌈 부호(K=7, r=1/2, G2 반전)를 연판정 비터비로 복호한다 | `CodingTests#Viterbi_NoiselessRoundTrip_AndInversionTransparency`<br>`CodingTests#Viterbi_CodingGain` | 3/3 | ✅ 통과 |
-| REQ-FEC-02 | 관례 기저 RS(255,223) 를 복호한다(SpaceLink 이중 기저 복호기 + 기저 변환) | `CodingTests#BasisTransform_RoundTripsAll256Values`<br>`CodingTests#ConventionalCodewordsFromReedsolo_AreCorrectedUpTo16Errors`<br>`CodingTests#SeventeenErrors_AreNotSilentlyReturnedAsOriginal` | 3/3 | ✅ 통과 |
-| REQ-RX-01 | 원시 IQ 녹음에서 전송 프레임을 복원한다 | `ReceiverTests#Asrtu1Recording_EveryTmFrameIsRecovered` | 1/1 | ✅ 통과 |
+| REQ-FEC-02 | 관례 기저 RS(255,223) 를 복호한다(SpaceLink 이중 기저 복호기 + 기저 변환) | `CodingTests#BasisTransform_RoundTripsAll256Values`<br>`CodingTests#ConventionalCodewordsFromReedsolo_AreCorrectedUpTo16Errors`<br>`CodingTests#SeventeenErrors_AreNotSilentlyReturnedAsOriginal`<br>`CodingTests#PnFill_IsAValidReedSolomonCodeword` | 4/4 | ✅ 통과 |
+| REQ-RX-01 | 원시 IQ 녹음에서 전송 프레임을 복원하고, 마커 없이 관성으로 읽은 블록은 뒤 마커가 경계를 확인할 때만 받는다 | `ReceiverTests#Asrtu1Recording_EveryTmFrameIsRecovered`<br>`ReceiverTests#FlywheelBlock_IsKeptOnlyWhenALaterMarkerConfirmsTheGrid` | 2/2 | ✅ 통과 |
+| REQ-RX-02 | 짧은 TM 헤더(5 바이트) → KISS → 스페이스 패킷을 꺼내고, 가상 채널 카운트가 끊기면 조립 중인 패킷을 버린다 | `ReceiverTests#Asrtu1Recording_SpacePacketsAreExtracted` | 1/1 | ✅ 통과 |
+| REQ-RX-03 | 독립 구현과 같은 프레임을 낸다 | `ReceiverTests#Asrtu1Recording_FramesMatchGrSatellitesByteForByte` | 1/1 | ✅ 통과 |
 
-**요구사항 10개 중 10개 검증됨.**
+**요구사항 12개 중 12개 검증됨.**
