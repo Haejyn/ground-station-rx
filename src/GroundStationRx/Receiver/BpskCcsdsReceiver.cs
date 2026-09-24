@@ -19,7 +19,12 @@ public sealed record BpskCcsdsConfig
     public int FrameLength { get; init; } = ConventionalReedSolomon.DataLength;
     /// <summary>예측 도플러 주변에서 반송파를 찾을 폭(±Hz). 송신기 주파수 오차 + TLE 오차를 덮어야 한다.</summary>
     public double SearchHalfWidthHz { get; init; } = 5_000;
-    public double MinCarrierSnrDb { get; init; } = 30;
+    /// <summary>
+    /// 버스트로 볼 반송파 선 세기(제곱 스펙트럼 선 / 중앙값, 0.2 초 구간). 신호 없는 구간은 실측 10~12.6 dB(ASRTU-1 녹음 전체),
+    /// 합성 BPSK 는 Es/N0 0 dB 에서 약 22 dB — 그 사이인 18 dB. 처음 둔 30 dB 는 Es/N0 6 dB 이하 버스트를 통째로 놓쳤다
+    /// (비터비 + RS 는 그 조건에서도 복호한다 — <c>SyntheticEndToEndTests</c>).
+    /// </summary>
+    public double MinCarrierSnrDb { get; init; } = 18;
 }
 
 /// <summary>복원한 전송 프레임 하나.</summary>
@@ -30,9 +35,10 @@ public sealed record ReceivedFrame(DateTime Utc, int Burst, int Alignment, byte[
 /// <param name="FlywheelBlocks">정렬별로 동기기가 마커 없이 관성(flywheel)으로 낸 코드블록 수</param>
 /// <param name="FlywheelDropped">그중 뒤 마커로 경계가 확인되지 않아 버린 수</param>
 /// <param name="BoundaryWords">정렬별로 첫 마커부터 코드블록 길이 간격의 자리에 실제로 있던 32 비트 — 마커가 깨진 자리를 들여다보려고</param>
+/// <param name="Soft">복조기가 낸 연판정 심볼(평균 |값| = 1) — 품질을 그림으로 보려고 남긴다</param>
 public sealed record BurstReport(int Index, DateTime StartUtc, DateTime EndUtc, double CarrierOffsetHz, double SymbolRateHz,
     double DemodQuality, int Symbols, int Codeblocks, int RsFailures, int Frames, int[][] MarkerBits, int[] FlywheelBlocks,
-    int[] FlywheelDropped, uint[][] BoundaryWords);
+    int[] FlywheelDropped, uint[][] BoundaryWords, double[] Soft);
 
 public sealed record ReceptionResult(IReadOnlyList<ReceivedFrame> Frames, IReadOnlyList<BurstReport> Bursts);
 
@@ -76,8 +82,9 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
     private (List<ReceivedFrame>, BurstReport) ProcessBurst(SigmfRecording rec, List<CarrierMeasurement> group, int index)
     {
         double fs = rec.SampleRateHz;
-        long start = Math.Max(0, SampleAt(rec, group[0].Utc) - (long)(0.3 * fs));
-        long end = Math.Min(rec.SampleCount, SampleAt(rec, group[^1].Utc) + (long)(0.3 * fs));
+        // 앞뒤로 잡음 구간을 넉넉히 넣는다 — BurstEdges 가 잡음 바닥을 여기서 잰다
+        long start = Math.Max(0, SampleAt(rec, group[0].Utc) - (long)(0.6 * fs));
+        long end = Math.Min(rec.SampleCount, SampleAt(rec, group[^1].Utc) + (long)(0.6 * fs));
         var x = new Complex[end - start];
         rec.Read(start, x);
 
@@ -128,7 +135,7 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
 
         var report = new BurstReport(index, rec.TimeOf(start + (long)s0 * decimation), rec.TimeOf(start + (long)s1 * decimation),
             group.Select(m => m.OffsetHz).Order().ElementAt(group.Count / 2), demod.SymbolRateHz, demod.Quality,
-            demod.Soft.Length, codeblocks, rsFailures, frames.Count, markerBits, flywheel, flywheelDropped, boundary);
+            demod.Soft.Length, codeblocks, rsFailures, frames.Count, markerBits, flywheel, flywheelDropped, boundary, demod.Soft);
         return (frames, report);
     }
 
@@ -179,8 +186,10 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
     }
 
     /// <summary>
-    /// 버스트의 시작·끝 — 64 심볼 이동 평균 전력이 잡음 바닥(하위 10 %)보다 10 dB 높은 가장 긴 구간.
+    /// 버스트의 시작·끝 — 64 심볼 이동 평균 전력이 잡음 바닥(하위 2 %)보다 10 dB 높은 가장 긴 구간.
     /// 앞뒤 잡음을 복조기에 넣으면 정규화와 타이밍 추정이 흐려진다.
+    /// 처음에는 하위 10 % 를 바닥으로 잡았는데, 버스트가 구간의 90 % 넘게 차면 "바닥" 이 신호 안에 들어가
+    /// 넘는 구간이 없어졌다(합성 시험이 잡은 예외). 그래도 못 찾으면 구간 전체를 쓴다.
     /// </summary>
     internal static (int Start, int End) BurstEdges(Complex[] y, double sps)
     {
@@ -195,7 +204,7 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
         }
         var sorted = (double[])p.Clone();
         Array.Sort(sorted);
-        double threshold = sorted[sorted.Length / 10] * 10;
+        double threshold = sorted[sorted.Length / 50] * 10;
         int bestStart = 0, bestLen = 0, runStart = -1;
         for (int i = 0; i <= p.Length; i++)
         {
@@ -207,6 +216,7 @@ public sealed class BpskCcsdsReceiver(BpskCcsdsConfig config, LinkGeometry link)
                 runStart = -1;
             }
         }
+        if (bestLen < w) return (0, y.Length);
         // 이동 평균은 뒤를 본다 — 켜지는 쪽은 창 길이만큼 늦게 넘는다
         int s = Math.Max(0, bestStart - w / 2);
         int e = Math.Min(y.Length, bestStart + bestLen - w / 2);

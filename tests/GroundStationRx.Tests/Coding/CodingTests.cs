@@ -146,4 +146,25 @@ public class CodingTests(ITestOutputHelper output)
         }
         Assert.Equal(0, randomPass);
     }
+
+    /// <summary>부호화 방향도 독립 구현과 같다 — reedsolo 가 만든 오류 0 개 부호어 40 개를 데이터에서 그대로 다시 만든다.</summary>
+    [Fact]
+    [Trait("Requirement", "REQ-FEC-02")]
+    public void Encode_MatchesReedsoloCodewords()
+    {
+        var blob = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "golden", "rs_conventional.bin"));
+        const int record = 1 + 255 + 223;
+        var rs = new ConventionalReedSolomon();
+        int compared = 0;
+        for (int off = 0; off < blob.Length; off += record)
+        {
+            if (blob[off] != 0) continue;
+            var cb = rs.Encode(blob.AsSpan(off + 256, 223));
+            Assert.True(blob.AsSpan(off + 1, 255).SequenceEqual(cb), $"사례 {off / record}");
+            compared++;
+        }
+        Assert.Equal(40, compared);
+        Assert.Throws<ArgumentException>(() => rs.Encode(new byte[10]));
+        Assert.Throws<ArgumentException>(() => rs.Decode(new byte[10], new byte[223]));
+    }
 }

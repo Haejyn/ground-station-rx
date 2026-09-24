@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- 보고 도구: 콘솔 출력 문자열은 지역화 대상이 아니다 -->
+    <NoWarn>$(NoWarn);CA1303;CA1305;CA1307;CA1310</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\GroundStationRx\GroundStationRx.csproj" />
+  </ItemGroup>
+</Project>

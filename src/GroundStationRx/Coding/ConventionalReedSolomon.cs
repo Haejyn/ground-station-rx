@@ -35,6 +35,17 @@ public sealed class ConventionalReedSolomon
         return result;
     }
 
+    /// <summary>223 바이트 데이터(관례 기저) → 255 바이트 코드블록(관례 기저). 합성 송신기와 시험용.</summary>
+    public byte[] Encode(ReadOnlySpan<byte> data)
+    {
+        if (data.Length != DataLength) throw new ArgumentException("데이터는 223 바이트", nameof(data));
+        Span<byte> dual = stackalloc byte[DataLength];
+        for (int i = 0; i < DataLength; i++) dual[i] = ToDual[data[i]];
+        var cb = _codec.Encode(dual);
+        for (int i = 0; i < cb.Length; i++) cb[i] = ToConventional[cb[i]];
+        return cb;
+    }
+
     private static byte[] Build(byte[] rows)
     {
         var table = new byte[256];
